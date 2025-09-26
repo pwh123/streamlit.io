@@ -1,0 +1,50 @@
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [argo-tunnel-down]  # 新增的触发类型
+
+jobs:
+  clicker:
+    runs-on: ubuntu-latest
+    inputs:
+      serverName:
+        description: '指定需要处理的服务器名（如 asg 或 aus）'
+        required: false
+        type: string
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        pip install selenium webdriver-manager
+
+    - name: Run auto click script
+      run: python auto_click.py
+      env:
+        SERVER_NAME: ${{ github.event.inputs.serverName || github.event.client_payload.serverName }}
+
+    - name: Commit log file
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        if [ ! -f click_log.txt ]; then
+          echo "初始化日志于 $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')" > click_log.txt
+        fi
+        git add click_log.txt
+        if ! git diff --cached --quiet; then
+          git commit -m "更新日志: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
+        fi
