@@ -2,49 +2,47 @@ name: Auto Click Streamlit
 
 on:
   schedule:
-    - cron: '0 0 * * 1'  # 每周一零点执行
-  workflow_dispatch:  # 支持手动触发，无输入参数
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
   repository_dispatch:
-    types: [argo-tunnel-down]  # 接收外部事件触发
+    types: [argo-tunnel-down]
 
 jobs:
   clicker:
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-        with:
-          persist-credentials: false
+    - name: Checkout code
+      uses: actions/checkout@v3
+      with:
+        persist-credentials: false
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.x'
 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install selenium webdriver-manager python-dotenv
+    - name: Install dependencies
+      run: |
+        pip install selenium webdriver-manager
 
-      - name: Run auto script
-        env:
-          # 从仓库调度事件中获取服务器名，手动触发时可能为空
-          SERVER_NAME: ${{ github.event.client_payload.serverName }}
-          # 敏感信息从仓库 secrets 中获取
-          APP_KEY: ${{ secrets.APP_KEY }}
-        run: |
-          python auto_click.py  # 脚本内部处理无参数场景
+    - name: Run auto click script
+      run: python auto_click.py
+      env:
+        # 直接从事件上下文获取服务器名，不依赖显式输入
+        SERVER_NAME: ${{ github.event.client_payload.serverName }}
 
-      - name: Upload logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: run-logs
-          path: ./logs/  # 上传脚本运行日志
-
-      - name: Notify result
-        if: success() || failure()
-        run: |
-          # 发送结果通知（示例：通过curl调用webhook）
-          curl -X POST -H "Content-Type: application/json" -d '{"status": "${{ job.status }}", "message": "任务执行完成"}' ${{ secrets.NOTIFY_WEBHOOK }}
-
+    - name: Commit log file
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        if [ ! -f click_log.txt ]; then
+          echo "初始化日志于 $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')" > click_log.txt
+        fi
+        git add click_log.txt
+        if ! git diff --cached --quiet; then
+          git commit -m "更新日志: $(TZ='Asia/Shanghai' date +'%Y-%m-%d %H:%M:%S')"
+          git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:main
+        fi
